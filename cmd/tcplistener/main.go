@@ -1,90 +1,47 @@
 package main
 
 import (
+    "github.com/IPTV-REPO/HTTPS_from_scratch.git/internal/request"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+	
 )
 
 
 
-func GetLineChannel(f io.ReadCloser)<-chan string{
-    
-    pipechannel:=make(chan string)
-    
-    go func(){
-        defer close(pipechannel)
-        defer f.Close()
-
-        var currentline string
-        data:=make([]byte,8)
-      
-        for{
-        
-            count,err:=f.Read(data)
-            if count>0{
-
-                str:=string(data[:count])
-                part:=strings.Split(str, "\n")
-
-                for i := 0; i < len(part)-1; i++ {
-                    fullline:=currentline+part[i]
-                    fmt.Printf("read: %s\n",fullline) 
-                    currentline="" 
-                }
-                currentline+=part[len(part)-1]
-            }
-
-            if err==io.EOF {
-            
-                if currentline!="" {
-                   fmt.Printf("read: %s\n",currentline) 
-            
-                }
-                fmt.Println("----------------------")
-                fmt.Println("End of file reached")
-                break
-            }
-        
-            if err!=nil{
-               log.Fatal(err)
-            }
-          
-        }
-
-
-    }()
-
-    return  pipechannel
-}
 
 
 func main(){
-    port:=":42069"
-    ln,err:=net.Listen("tcp",port)    
+   const port=":42069" ;
+    ln,err:=net.Listen("tcp",port)                                         //listen on the specefic port 
     
     if err!=nil{
         log.Fatal(err)
     }
 
     for  {
-        conn,err:=ln.Accept()
-        if err!=nil{
-            log.Fatal(err)
-            break
-        }
-        
-        fmt.Printf("Accepted connection from %s\n", conn.RemoteAddr())
-        line:=GetLineChannel(conn)
+        conn,err:=ln.Accept()                                                  //accept incoming conn
 
-    
-        for l:=range line{
-            fmt.Printf("%s\n", l)
-    
-        }
-        conn.Close()
+        fmt.Printf("\t There is a New HTTP Request for you  : \r\n")
+	    fmt.Printf("==============================================\r\n")
+	
+
+        if err!=nil {
+			log.Fatal("ERROR ","ERROR",err)
+		}
+
+        req,err:=request.RequestFromReader(conn)                                            //parse the request (from the parse request func) from the conn reader 
+        if err!=nil{
+			log.Fatal("ERROR ","ERROR",err)
+		}
+
+        fmt.Println("Request line:")
+        fmt.Printf("- Method: %s\n", req.RequestLine.Method)
+        fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
+        fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
+        fmt.Printf("==============================================\r\n")
+       
     }
   
     
