@@ -53,4 +53,20 @@ func TestHeadersParse(t *testing.T) {                               //func for t
 		_, _, err := headers.Parse(data)
 		require.Error(t, err)
 	})
+
+	t.Run("Valid 2 headers with same key", func(t *testing.T) {
+		headers := NewHeaders()
+		// Manually add the first occurrence (normalized to lowercase)
+		headers["set-person"] = "lane-loves-go"
+
+		// Data for the second occurrence
+		data := []byte("Set-Person: prime-loves-zig\r\n\r\n")
+		n, done, err := headers.Parse(data)
+
+		require.NoError(t, err)
+		// The map should now contain both values separated by a comma
+		assert.Equal(t, "lane-loves-go, prime-loves-zig", headers["set-person"])
+		assert.Equal(t, 29, n)
+		assert.False(t, done)
+	})
 }

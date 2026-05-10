@@ -5,18 +5,22 @@ import (
 	"errors"
 	"io"
 	"strings"
+
+	"github.com/IPTV-REPO/HTTPS_from_scratch.git/internal/headers"
 )
 
 
 const(
 	stateInitialized=iota           // The initial state of the request before any data has been read. In this state,
                                     //  the request is waiting for the first line of the HTTP request to be read.
+    stateHeaders                     // The state of the request after the request line has been successfully parsed. In this state, the request is waiting for the headers of the HTTP request to be read and parsed.
 	stateDone                       // The state of the request after the entire HTTP request has been read and processed. In this state,
 )
 
 type Request struct {
 	RequestLine RequestLine
 	stateLine  int               // This tracks: Are we at the start? Are we done?
+    Headers   headers.Headers
 }
 
 type RequestLine struct {                //the request line of http request contains those three parts 
@@ -36,22 +40,60 @@ func RightMethods(method string) bool {       //validate the method of the reque
 
 
 func (r *Request) parse(data []byte) (int,error) {         //parsing the request line of the http request and validating it
-	switch r.stateLine {
-	case stateInitialized:                                         // In this state, we expect to read the request line of the HTTP request. We will parse the request line and validate it.
-		parsedLine,consumed, err := parseRequestLine(data)        // If there is an error during parsing, we return the error. If the request line is successfully parsed, we update the Request struct with the parsed request line and transition to the stateDone state.
-		if err != nil {
-			return 0,err
+	read:=0
+	for {
+
+		currentData := data[read:]                              // Get the unprocessed portion of the data starting from the current read index.
+		if len(currentData)==0{
+			break 
 		}
-		if consumed>0 {                                            // If the request line is successfully parsed, we update the Request struct with the parsed request line and transition to the stateDone state.
-			r.RequestLine = *parsedLine
-		    r.stateLine = stateDone
+		switch r.stateLine {
+
+		case stateInitialized:                                         // In this state, we expect to read the request line of the HTTP request. We will parse the request line and validate it.
+
+			parsedLine,consumed, err := parseRequestLine(currentData)        // If there is an error during parsing, we return the error. If the request line is successfully parsed, we update the Request struct with the parsed request line and transition to the stateDone state.
+			if err != nil {
+				return 0,err
+			}
+			if consumed>0 {                                            // If the request line is successfully parsed, we update the Request struct with the parsed request line and transition to the stateDone state.
+				r.RequestLine = *parsedLine
+				r.stateLine = stateHeaders
+				read+=consumed
+			}
+			if consumed==0 {
+				return read,nil
+			}
+			continue
+
+		case stateHeaders:
+			
+			n, done, err := r.Headers.Parse(currentData)           // If there is an error during parsing, we return the error. If the headers are successfully parsed and we have reached the end of the headers (indicated by done being true), we transition to the stateDone state.
+			if err!=nil{
+				return 0,err	
+			}
+			if n==0 {
+				return read,nil
+			}
+
+			read+=n
+
+			if done{
+				r.stateLine = stateDone
+
+			}
+			continue
+			
+		case stateDone:
+			return read,nil
+
+		default:
+			return 0, errors.New("unknown state")
+		
 		}
-		return consumed,nil
-	case stateDone:
-		return 0,errors.New("trying to read data in a done state")
-	default:
-		return 0, errors.New("unknown state")
+		
 	}
+	return read,nil
+	
 }
 
 func httpValid(version string) bool {                                  // This function checks if the HTTP version string is valid. 
@@ -114,6 +156,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	r :=&Request{
 		stateLine:stateInitialized,
+		Headers:   headers.NewHeaders(),
 	}
 
 	for r.stateLine!=stateDone{                          // The function continues reading and parsing until the entire HTTP request has been successfully parsed or an error occurs.
