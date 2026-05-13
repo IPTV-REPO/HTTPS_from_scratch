@@ -40,14 +40,16 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	CRLF := []byte("\r\n")
 	idx := bytes.Index(data, CRLF)
-	if idx == 0 {
-		return 2, true, nil
 
-	}
 	if idx == -1 {
 		return 0, false, nil
 	}
 
+	if idx == 0 {
+		return 2, true, nil
+
+	}
+	
 	CLN := []byte(":")
 	idxColon := bytes.Index(data, CLN)
 	if idxColon == -1 {
@@ -87,3 +89,4 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	return idx + 2, false, nil
 
 }
+

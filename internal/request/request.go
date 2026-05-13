@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/IPTV-REPO/HTTPS_from_scratch.git/internal/headers"
@@ -14,6 +15,7 @@ const(
 	stateInitialized=iota           // The initial state of the request before any data has been read. In this state,
                                     //  the request is waiting for the first line of the HTTP request to be read.
     stateHeaders                     // The state of the request after the request line has been successfully parsed. In this state, the request is waiting for the headers of the HTTP request to be read and parsed.
+	stateBody
 	stateDone                       // The state of the request after the entire HTTP request has been read and processed. In this state,
 )
 
@@ -21,6 +23,8 @@ type Request struct {
 	RequestLine RequestLine
 	stateLine  int               // This tracks: Are we at the start? Are we done?
     Headers   headers.Headers
+	Body	  []byte
+
 }
 
 type RequestLine struct {                //the request line of http request contains those three parts 
@@ -38,6 +42,23 @@ func RightMethods(method string) bool {       //validate the method of the reque
 	return true
 }
 
+func getInt(h headers.Headers,key string,defaultValue int) int{
+	ValueStr,exists:=h.Get(key)
+	if !exists{
+		return defaultValue
+	}
+	Value,err:=strconv.Atoi(ValueStr)
+	if err!=nil{
+		return defaultValue
+	}
+	return Value
+}
+
+func (r *Request) HasBody() bool{
+	length:=getInt(r.Headers,"Content-Length",0)
+	return  length>0
+
+}
 
 func (r *Request) parse(data []byte) (int,error) {         //parsing the request line of the http request and validating it
 	read:=0
@@ -77,11 +98,42 @@ func (r *Request) parse(data []byte) (int,error) {         //parsing the request
 
 			read+=n
 
-			if done{
-				r.stateLine = stateDone
+			if done {
+				if r.HasBody() {
+					r.stateLine = stateBody
+					// Optional: initialize the body slice here using Content-Length
+				} else {
+					r.stateLine = stateDone
+				}
+			}		
+			
+		
+		case stateBody:
 
+			target := getInt(r.Headers, "content-length", 0)
+			remaining := target - len(r.Body)
+
+			if remaining <= 0 {
+				r.stateLine = stateDone
+				return read, nil
 			}
-			continue
+
+			if len(currentData) >= remaining {
+				r.Body = append(r.Body, currentData[:remaining]...)
+				read += remaining
+				r.stateLine = stateDone
+				return read, nil
+			}
+
+			r.Body = append(r.Body, currentData...)
+			read += len(currentData)
+
+			if len(r.Body) == target {
+				r.stateLine = stateDone
+			}
+			
+
+			return read, nil
 			
 		case stateDone:
 			return read,nil
